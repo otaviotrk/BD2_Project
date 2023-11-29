@@ -1,24 +1,13 @@
 const express = require('express');
-const mongoose = require('mongoose');
+const { MongoClient, ObjectId } = require('mongodb');
 const bodyParser = require('body-parser');
 const readline = require('readline');
 
 const app = express();
 const port = 3333;
 
-mongoose.connect('mongodb://localhost:27017/LocadoraDeFilmes', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
-
-const itemSchema = new mongoose.Schema({
-  nome: String,
-  descricao: String,
-  genero: String,
-  anoLancamento: Number
-});
-
-const Item = mongoose.model('Item', itemSchema);
+const url = 'mongodb://localhost:27017';
+const dbName = 'LocadoraDeFilmes';
 
 app.use(bodyParser.json());
 
@@ -34,74 +23,101 @@ function askQuestion(question) {
 }
 
 async function createItem() {
+  const client = new MongoClient(url, { useNewUrlParser: true, useUnifiedTopology: true });
+  await client.connect();
+
+  const db = client.db(dbName);
+  const collection = db.collection('items');
+
   const nome = await askQuestion('Digite o nome do filme: ');
   const descricao = await askQuestion('Digite a descrição do filme: ');
   const genero = await askQuestion('Digite o gênero do filme: ');
   const anoLancamento = parseInt(await askQuestion('Digite o ano de lançamento do filme: '));
 
-  const newItem = new Item({ nome, descricao, genero, anoLancamento });
+  const newItem = { nome, descricao, genero, anoLancamento };
+  const result = await collection.insertOne(newItem);
 
-  try {
-    await newItem.save();
-    console.log('Filme criado com sucesso:', newItem);
-  } catch (error) {
-    console.error('Erro ao criar filme:', error.message);
-  }
+  client.close();
+
+  console.log('Resultado da criação do filme:', result);
 }
 
 async function updateItem() {
+  const client = new MongoClient(url, { useNewUrlParser: true, useUnifiedTopology: true });
+  await client.connect();
+
+  const db = client.db(dbName);
+  const collection = db.collection('items');
+
   const itemId = await askQuestion('Digite o ID do filme que deseja atualizar: ');
 
-  try {
-    const item = await Item.findById(itemId);
+  const existingItem = await collection.findOne({ _id: new ObjectId(itemId) });
 
-    if (!item) {
-      console.log('Filme não encontrado.');
-      return;
-    }
-
-    console.log('Detalhes do filme atual:', item);
-
-    const nome = await askQuestion('Digite o novo nome do filme (ou pressione Enter para manter o mesmo): ');
-    const descricao = await askQuestion('Digite a nova descrição do filme (ou pressione Enter para manter a mesma): ');
-    const genero = await askQuestion('Digite o novo gênero do filme (ou pressione Enter para manter o mesmo): ');
-    const anoLancamentoInput = await askQuestion('Digite o novo ano de lançamento do filme (ou pressione Enter para manter o mesmo): ');
-
-    const anoLancamento = anoLancamentoInput.trim() !== '' ? parseInt(anoLancamentoInput) : item.anoLancamento;
-
-    item.nome = nome || item.nome;
-    item.descricao = descricao || item.descricao;
-    item.genero = genero || item.genero;
-    item.anoLancamento = anoLancamento;
-
-    await item.save();
-
-    console.log('Filme atualizado com sucesso:', item);
-  } catch (error) {
-    console.error('Erro ao atualizar filme:', error.message);
+  if (!existingItem) {
+    console.log('Filme não encontrado.');
+    return;
   }
+
+  console.log('Detalhes do filme atual:', existingItem);
+
+  const nome = await askQuestion('Digite o novo nome do filme (ou pressione Enter para manter o mesmo): ');
+  const descricao = await askQuestion('Digite a nova descrição do filme (ou pressione Enter para manter a mesma): ');
+  const genero = await askQuestion('Digite o novo gênero do filme (ou pressione Enter para manter o mesmo): ');
+  const anoLancamentoInput = await askQuestion('Digite o novo ano de lançamento do filme (ou pressione Enter para manter o mesmo): ');
+
+  const anoLancamento = anoLancamentoInput.trim() !== '' ? parseInt(anoLancamentoInput) : existingItem.anoLancamento;
+
+  const updatedItem = {
+    nome: nome || existingItem.nome,
+    descricao: descricao || existingItem.descricao,
+    genero: genero || existingItem.genero,
+    anoLancamento
+  };
+
+  const result = await collection.findOneAndUpdate(
+    { _id: new ObjectId(itemId) },
+    { $set: updatedItem },
+    { returnDocument: 'after' }
+  );
+
+  client.close();
+
+  console.log('Resultado da atualização do filme:', result);
 }
 
 async function deleteItem() {
+  const client = new MongoClient(url, { useNewUrlParser: true, useUnifiedTopology: true });
+  await client.connect();
+
+  const db = client.db(dbName);
+  const collection = db.collection('items');
+
   const itemId = await askQuestion('Digite o ID do filme que deseja deletar: ');
 
-  try {
-    const item = await Item.findByIdAndDelete(itemId);
+  const result = await collection.findOneAndDelete({ _id: new ObjectId(itemId) });
 
-    if (!item) {
-      console.log('Filme não encontrado.');
-      return;
-    }
+  client.close();
 
-    console.log('Filme deletado com sucesso:', item);
-  } catch (error) {
-    console.error('Erro ao deletar filme:', error.message);
-  }
+  console.log('Resultado da exclusão do filme:', result);
+}
+
+async function listItems() {
+  const client = new MongoClient(url, { useNewUrlParser: true, useUnifiedTopology: true });
+  await client.connect();
+
+  const db = client.db(dbName);
+  const collection = db.collection('items');
+
+  const items = await collection.find().toArray();
+
+  client.close();
+
+  console.log('=== Lista de Filmes ===');
+  console.log(items);
 }
 
 async function mainMenu() {
-
-  await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar alguns segundos para melhor visualização
+  await new Promise(resolve => setTimeout(resolve, 2000));
 
   console.log('\n=== Menu ===');
   console.log('1. Criar Filme');
@@ -123,9 +139,7 @@ async function mainMenu() {
       await deleteItem();
       break;
     case '4':
-      const items = await Item.find();
-      console.log('=== Lista de Filmes ===');
-      console.log(items);
+      await listItems();
       break;
     case '0':
       console.log('Encerrando o servidor...');
@@ -135,17 +149,16 @@ async function mainMenu() {
     default:
       console.log('Opção inválida. Tente novamente.');
   }
+
   mainMenu();
 }
 
-// Inicia o menu principal
 mainMenu();
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
 
-// Fechar a interface readline quando o servidor for encerrado
 process.on('SIGINT', () => {
   rl.close();
   process.exit();
