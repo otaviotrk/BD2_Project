@@ -1,7 +1,6 @@
 1. Ter o Node.js e NPM instalados.
 
-2. Executar os comandos:
-npm init -y
+2. Executar os comandos (caso não esteja instalado ainda):
 npm install express body-parser
 
 3. Rodar o servidor usando o comando:
